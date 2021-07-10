@@ -379,11 +379,13 @@ impl_debug!(
 impl RecvFlags {
     /// Check if the message terminates a record.
     ///
-    /// Not all socket types support the notion of records.
-    /// For socket types that do support it (such as [`SEQPACKET`][Type::SEQPACKET]),
-    /// a record is terminated by sending a message with the end-of-record flag set.
+    /// Not all socket types support the notion of records. For socket types
+    /// that do support it (such as [`SEQPACKET`]), a record is terminated by
+    /// sending a message with the end-of-record flag set.
     ///
     /// On Unix this corresponds to the MSG_EOR flag.
+    ///
+    /// [`SEQPACKET`]: Type::SEQPACKET
     pub const fn is_end_of_record(self) -> bool {
         self.0 & libc::MSG_EOR != 0
     }
@@ -997,6 +999,7 @@ impl crate::Socket {
     /// Accept a new incoming connection from this listener.
     ///
     /// This function directly corresponds to the `accept4(2)` function.
+    #[cfg_attr(docsrs, doc = man_links!(accept4(2)))]
     ///
     /// This function will block the calling thread until a new connection is
     /// established. When established, the corresponding `Socket` and the remote
@@ -1519,6 +1522,7 @@ impl crate::Socket {
     /// Different OSs support different kinds of `file`s, see the OS
     /// documentation for what kind of files are supported. Generally *regular*
     /// files are supported by all OSs.
+    #[cfg_attr(docsrs, doc = man_links!(sendfile(2)))]
     ///
     /// The `offset` is the absolute offset into the `file` to use as starting
     /// point.
