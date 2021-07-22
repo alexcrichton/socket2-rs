@@ -12,6 +12,7 @@ use std::marker::PhantomData;
 use std::mem::{self, size_of, MaybeUninit};
 use std::net::{self, Ipv4Addr, Ipv6Addr, Shutdown};
 use std::os::windows::prelude::*;
+use std::path::Path;
 use std::sync::Once;
 use std::time::{Duration, Instant};
 use std::{ptr, slice};
@@ -44,7 +45,7 @@ pub(crate) use winapi::ctypes::c_int;
 pub(crate) const MSG_TRUNC: c_int = 0x01;
 
 // Used in `Domain`.
-pub(crate) use winapi::shared::ws2def::{AF_INET, AF_INET6};
+pub(crate) use winapi::shared::ws2def::{AF_INET, AF_INET6, AF_UNIX};
 // Used in `Type`.
 pub(crate) use winapi::shared::ws2def::{SOCK_DGRAM, SOCK_STREAM};
 #[cfg(feature = "all")]
@@ -733,6 +734,52 @@ pub(crate) fn to_in6_addr(addr: &Ipv6Addr) -> in6_addr {
 
 pub(crate) fn from_in6_addr(addr: in6_addr) -> Ipv6Addr {
     Ipv6Addr::from(*unsafe { addr.u.Byte() })
+}
+
+/// This type is not yet in winapi.
+#[repr(C)]
+#[allow(non_camel_case_types)]
+struct sockaddr_un {
+    pub sun_family: sa_family_t,
+    pub sun_path: [u8; 108],
+}
+
+#[allow(unused_unsafe)] // TODO: replace with `unsafe_op_in_unsafe_fn` once stable.
+pub(crate) fn unix_sockaddr(path: &Path) -> io::Result<SockAddr> {
+    unsafe {
+        SockAddr::init(|storage, len| {
+            // Safety: `SockAddr::init` zeros the address, which is a valid
+            // representation.
+            let storage: &mut crate::sys::sockaddr_un = unsafe { &mut *storage.cast() };
+            let len: &mut socklen_t = unsafe { &mut *len };
+
+            let bytes = path
+                .to_str()
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "path must be valid UTF-8")
+                })?
+                .as_bytes();
+
+            if bytes.len() > storage.sun_path.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "path must be shorter than SUN_LEN",
+                ));
+            }
+
+            storage.sun_family = crate::sys::AF_UNIX as sa_family_t;
+            storage.sun_path[..bytes.len()].copy_from_slice(bytes);
+
+            let base = storage as *const _ as usize;
+            let path = &storage.sun_path as *const _ as usize;
+            let sun_path_offset = path - base;
+            let length = sun_path_offset + bytes.len();
+            *len = length as socklen_t;
+
+            Ok(())
+        })
+    }
+    .map(|(_, addr)| addr)
 }
 
 /// Windows only API.
